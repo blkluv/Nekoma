@@ -13,6 +13,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user address from session
+    let userAddress: string | undefined;
+    try {
+      const session = request.cookies.get("session")?.value;
+      if (session) {
+        const statusResponse = await fetch(`${request.nextUrl.origin}/api/auth/status`, {
+          headers: {
+            Cookie: `session=${session}`
+          }
+        });
+        const statusData = await statusResponse.json();
+        if (statusData.isAuthenticated) {
+          userAddress = statusData.address;
+        }
+      }
+    } catch (err) {
+      console.log('Could not get user address from session:', err);
+    }
+
     let prompt = generateToolsPrompt() + '\n\nConversation:\n';
     
     if (conversationHistory && conversationHistory.length > 0) {
@@ -29,8 +48,12 @@ export async function POST(request: NextRequest) {
       maxTokens: 500,
     });
 
+    console.log('🔍 Raw Gemini response:', initialResponse);
+
     try {
       let cleanedResponse = initialResponse.trim();
+      
+      console.log('🧹 Before cleaning:', JSON.stringify(cleanedResponse));
       
       if (cleanedResponse.startsWith('```json')) {
         cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -40,13 +63,54 @@ export async function POST(request: NextRequest) {
       
       cleanedResponse = cleanedResponse.trim();
       
+      console.log('🧹 After cleaning:', JSON.stringify(cleanedResponse));
+      console.log('🔍 Checking if starts with { and contains toolcall:', 
+        cleanedResponse.startsWith('{'), 
+        cleanedResponse.includes('"type": "toolcall"')
+      );
+      
       if (cleanedResponse.startsWith('{') && cleanedResponse.includes('"type": "toolcall"')) {
+        console.log('Detected tool call! Parsing JSON...');
+        
         const toolCall: ToolCall = JSON.parse(cleanedResponse);
         
+        console.log('Parsed tool call:', JSON.stringify(toolCall, null, 2));
+        
         if (toolCall.type === 'toolcall' && toolCall.toolname) {
+          console.log('Valid tool call structure, executing tool:', toolCall.toolname);
+          
           try {
+            // Add user address to tool parameters if not already provided
+            if (toolCall.toolname === 'sendUSDCTransaction' && userAddress && !toolCall.parameters?.userAddress) {
+              console.log('Adding user address to tool parameters:', userAddress);
+              toolCall.parameters = { ...toolCall.parameters, userAddress };
+            }
+
+            console.log('Executing tool with parameters:', JSON.stringify(toolCall.parameters, null, 2));
+            
             const toolResult = await executeTools(toolCall);
             
+            console.log('Tool execution result:', JSON.stringify(toolResult, null, 2));
+            
+            // Check if the tool requires client-side execution
+            if (toolResult && typeof toolResult === 'object' && 
+                (toolResult as any).executeClientSide) {
+              
+              console.log('Tool requires client-side execution, returning special response');
+              
+              // Return the tool result directly so the frontend can handle it
+              return NextResponse.json({ 
+                response: (toolResult as any).message,
+                toolUsed: {
+                  name: toolCall.toolname,
+                  parameters: toolCall.parameters,
+                  result: toolResult
+                },
+                executeClientSide: true,
+                transactionParams: (toolResult as any).transactionParams
+              });
+            }
+
             const finalPrompt = `${prompt}
 
 Tool was called: ${toolCall.toolname}

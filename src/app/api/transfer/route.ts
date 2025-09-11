@@ -101,6 +101,38 @@ export async function POST(req: NextRequest) {
 
     console.log("Funds pulled into smart wallet:", pullResult.userOpHash);
 
+    // Wait for the transaction to be confirmed and check balance
+    console.log("Waiting for transaction confirmation...");
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+
+    // Check smart wallet USDC balance before transferring
+    try {
+      const balance = await publicClient.readContract({
+        address: USDC_ADDRESS as `0x${string}`,
+        abi: [
+          {
+            name: "balanceOf",
+            type: "function",
+            stateMutability: "view",
+            inputs: [{ name: "account", type: "address" }],
+            outputs: [{ name: "balance", type: "uint256" }],
+          },
+        ],
+        functionName: "balanceOf",
+        args: [serverWallet.smartAccount.address as `0x${string}`],
+      });
+      
+      console.log(`Smart wallet USDC balance: ${balance.toString()}`);
+      console.log(`Required amount: ${amt.toString()}`);
+      
+      if (balance < amt) {
+        throw new Error(`Insufficient balance in smart wallet. Has: ${balance.toString()}, needs: ${amt.toString()}`);
+      }
+    } catch (balanceError) {
+      console.error("Balance check error:", balanceError);
+      throw new Error(`Failed to verify smart wallet balance: ${balanceError}`);
+    }
+
     // Step 2: Transfer USDC from smart wallet to recipient
     const transferCalls: any[] = [];
 

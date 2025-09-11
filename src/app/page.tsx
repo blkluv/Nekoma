@@ -7,13 +7,11 @@ import SpendSection from "@/components/SpendSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { getRawPermissions } from "@/utils/spendUtils";
-import { getPermissionStatus } from "@base-org/account/spend-permission/browser";
-import { prepareSpendCallData } from "@base-org/account/spend-permission/browser";
 import { useChat } from "@/hooks/useChat";
 import { ChatMessages } from "@/components/ChatMessages";
 import { ChatInput } from "@/components/ChatInput";
 import { Trash2, Bot, Wallet } from "lucide-react";
+
 interface ServerWalletResponse {
   address: string;
   smartAccountAddress?: string;
@@ -29,6 +27,7 @@ export default function Home() {
   useEffect(() => {
     checkAuthStatus();
   });
+
   const checkAuthStatus = async () => {
     try {
       const res = await axios.get("/api/auth/status");
@@ -45,70 +44,11 @@ export default function Home() {
       setIsLoading(false);
     }
   };
+
   const handleSignIn = async (address: string) => {
     console.log("User authenticated with address:", address);
     setIsAuthenticated(true);
     setUserAddress(address);
-  };
-  const sendTransaction = async () => {
-    try {
-      const smartWallet = await fetch("/api/serverwallet");
-      const data: ServerWalletResponse = await smartWallet.json();
-
-      const rawPermissions = await getRawPermissions(
-        userAddress!,
-        data.smartAccountAddress!
-      );
-
-      const requiredAmount = BigInt(100_000);
-      let remainingAmount = requiredAmount;
-      const spendCalls: any[] = [];
-
-      for (const perm of rawPermissions) {
-        if (remainingAmount <= 0) break;
-
-        const status = await getPermissionStatus(perm);
-
-        if (status.remainingSpend <= BigInt(0)) continue;
-
-        const spendAmount =
-          remainingAmount > status.remainingSpend
-            ? status.remainingSpend
-            : remainingAmount;
-
-        const call = await prepareSpendCallData(perm, spendAmount);
-        spendCalls.push(call);
-
-        remainingAmount -= spendAmount;
-      }
-
-      if (remainingAmount > BigInt(0)) {
-        throw new Error(
-          `Not enough permission to cover the required amount. Still need ${Number(
-            remainingAmount
-          )} units`
-        );
-      }
-
-      console.log("Spend calls to send:", spendCalls);
-
-      const res = await axios.post("/api/transfer", {
-        recipient: "0xF77A1B7294c761ea5DbD77D3AC3050c9AC802Cc3",
-        sender: userAddress,
-        amount: requiredAmount.toString(),
-        spendCalls,
-      });
-
-      if (res.data.success) {
-        toast.success("Transaction sent successfully");
-        console.log("Transaction response:", res.data);
-      } else {
-        toast.error("Transaction failed: " + res.data.error);
-      }
-    } catch (err) {
-      console.error("Error sending transaction:", err);
-      toast.error("Error sending transaction");
-    }
   };
 
   const handleSignOut = async () => {
@@ -177,9 +117,9 @@ export default function Home() {
                   <CardContent className="space-y-4">
                     <SpendSection />
                     <div className="pt-4 border-t">
-                      <Button onClick={sendTransaction} size="lg" className="w-full">
-                        Send Transaction
-                      </Button>
+                      <p className="text-sm text-gray-600 text-center">
+                        💬 Use the chat assistant to send USDC transactions with natural language commands like "send 0.1 USDC to 0x..."
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -187,8 +127,8 @@ export default function Home() {
 
               {/* Chat Section */}
               <div>
-                <Card className="h-[700px] flex flex-col">
-                  <CardHeader className="border-b">
+                <Card className="h-[700px] flex flex-col overflow-hidden">
+                  <CardHeader className="border-b flex-shrink-0">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Bot className="h-6 w-6 text-primary" />
@@ -207,13 +147,13 @@ export default function Home() {
                       )}
                     </div>
                     {chatError && (
-                      <div className="text-destructive text-sm bg-destructive/10 p-3 rounded-md">
+                      <div className="text-destructive text-sm bg-destructive/10 p-3 rounded-md break-words">
                         Error: {chatError}
                       </div>
                     )}
                   </CardHeader>
                   
-                  <CardContent className="flex-1 flex flex-col p-0">
+                  <CardContent className="flex-1 flex flex-col p-0 overflow-hidden min-h-0">
                     <ChatMessages messages={messages} isLoading={isChatLoading} />
                     <ChatInput onSendMessage={sendMessage} disabled={isChatLoading} />
                   </CardContent>

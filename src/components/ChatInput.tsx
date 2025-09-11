@@ -26,19 +26,20 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
   };
 
   return (
-    <div className="flex gap-2 p-4 border-t bg-background">
+    <div className="flex gap-2 p-4 border-t bg-background flex-shrink-0">
       <Input
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type your message..."
         disabled={disabled}
-        className="flex-1"
+        className="flex-1 min-w-0"
       />
       <Button
         onClick={handleSubmit}
         disabled={disabled || !inputValue.trim()}
         size="icon"
+        className="flex-shrink-0"
       >
         <Send className="h-4 w-4" />
       </Button>

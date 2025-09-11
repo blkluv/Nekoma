@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { requestSpendPermission } from "@base-org/account/spend-permission";
+import { requestSpendPermission } from "@base-org/account/spend-permission/browser";
 import { createBaseAccountSDK } from "@base-org/account";
 import { Button } from "./ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
@@ -18,7 +18,9 @@ import {
 } from "./ui/table";
 import {
   getUserSpendPermissions,
+  getFullUserSpendPermissions,
   SpendPermissionSummary,
+  FullSpendPermission,
 } from "@/utils/spendUtils";
 
 interface ServerWalletResponse {
@@ -39,6 +41,7 @@ const SpendSection = () => {
   const [userAddress, setUserAddress] = useState<string>("");
   const [spenderAddress, setSpenderAddress] = useState<string>("");
   const [permissions, setPermissions] = useState<SpendPermissionSummary[]>([]);
+  const [fullPermissions, setFullPermissions] = useState<FullSpendPermission[]>([]);
   const [dailyLimit, setDailyLimit] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [fetchingPermissions, setFetchingPermissions] = useState(false);
@@ -63,11 +66,16 @@ const SpendSection = () => {
 
     setFetchingPermissions(true);
     try {
-      const fetchedPermissions = await getUserSpendPermissions(
-        userAddress,
-        spenderAddress
-      );
+      // Fetch both summary and full permissions
+      const [fetchedPermissions, fetchedFullPermissions] = await Promise.all([
+        getUserSpendPermissions(userAddress, spenderAddress),
+        getFullUserSpendPermissions(userAddress, spenderAddress)
+      ]);
+      
       setPermissions(fetchedPermissions);
+      setFullPermissions(fetchedFullPermissions);
+      
+      console.log("Full permissions with signatures:", fetchedFullPermissions);
     } catch (err) {
       console.error("Failed to fetch permissions", err);
       setError("Failed to fetch permissions");

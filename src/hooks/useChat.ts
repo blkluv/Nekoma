@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTransferWithPermissions } from './useTransferWithPermissions';
 
 export interface ChatMessage {
   id: string;
@@ -25,6 +26,7 @@ export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { executeTransfer, isExecuting } = useTransferWithPermissions();
 
   const sendMessage = useCallback(async (message: string) => {
     if (!message.trim()) return;
@@ -64,16 +66,63 @@ export function useChat(): UseChatReturn {
       }
 
       const data = await response.json();
+      
+      console.log('Chat API response:', JSON.stringify(data, null, 2));
 
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response,
-        timestamp: new Date(),
-        ...(data.toolUsed && { toolUsed: data.toolUsed }),
-      };
+      // Check if client-side execution is required
+      if (data.executeClientSide && data.transactionParams) {
+        console.log('Client-side execution detected!', data.transactionParams);
+        
+        // Add a message indicating transfer is starting
+        const preparingMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.response + "\n\nExecuting transfer (with retry logic)...",
+          timestamp: new Date(),
+          ...(data.toolUsed && { toolUsed: data.toolUsed }),
+        };
+        
+        setMessages(prev => [...prev, preparingMessage]);
 
-      setMessages(prev => [...prev, assistantMessage]);
+        console.log('🚀 Starting client-side transfer execution...');
+        
+        // Execute the transfer client-side
+        const transferResult = await executeTransfer(data.transactionParams);
+        
+        console.log('📋 Transfer result:', transferResult);
+        
+        // Create the final result message based on success/failure
+        let resultContent = transferResult.message;
+        if (transferResult.success && transferResult.explorerUrl) {
+          resultContent += `\n\nView transaction: ${transferResult.explorerUrl}`;
+        }
+        
+        const resultMessage: ChatMessage = {
+          id: (Date.now() + 2).toString(),
+          role: 'assistant',
+          content: resultContent,
+          timestamp: new Date(),
+          toolUsed: {
+            name: 'sendUSDCTransaction',
+            result: transferResult
+          }
+        };
+
+        setMessages(prev => [...prev, resultMessage]);
+      } else {
+        console.log('📝 Regular message response, no client-side execution needed');
+        
+        // Regular message handling
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.response,
+          timestamp: new Date(),
+          ...(data.toolUsed && { toolUsed: data.toolUsed }),
+        };
+
+        setMessages(prev => [...prev, assistantMessage]);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
       setError(errorMessage);
@@ -81,7 +130,7 @@ export function useChat(): UseChatReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [messages]);
+  }, [messages, executeTransfer]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -90,7 +139,7 @@ export function useChat(): UseChatReturn {
 
   return {
     messages,
-    isLoading,
+    isLoading: isLoading || isExecuting,
     error,
     sendMessage,
     clearChat,
