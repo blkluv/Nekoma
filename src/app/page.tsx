@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { SignInWithBaseButton } from "@/components/SignInWithBase";
+import SpendSection from "@/components/SpendSection";
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userAddress, setUserAddress] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
     checkAuthStatus();
   });
@@ -76,6 +78,7 @@ export default function Home() {
               You are signed in
             </h2>
             <p className="text-gray-600">Address: {userAddress}</p>
+            <SpendSection />
           </div>
         )}
       </div>
