@@ -20,7 +20,7 @@ export const SignInWithBaseButton = ({
     try {
       // Initialize the SDK
       const provider = createBaseAccountSDK({
-        appName: "Zora Creator Coins Agent",
+        appName: "Coinbase Agent",
       }).getProvider();
 
       // 1 — Get a fresh nonce from the server

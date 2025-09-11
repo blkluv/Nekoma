@@ -23,19 +23,14 @@ import {
   SelectValue,
   SelectItem,
 } from "./ui/select";
+import {
+  getUserSpendPermissions,
+  SpendPermissionSummary,
+} from "@/utils/spendUtils";
 
 interface ServerWalletResponse {
   address: string;
   smartAccountAddress?: string;
-}
-
-interface SpendPermission {
-  token: string;
-  tokenName: string;
-  allowance: string;
-  account: string;
-  spender: string;
-  periodInDays: number;
 }
 
 const CHAIN_ID = 8453; // Base mainnet
@@ -44,17 +39,17 @@ const CHAIN_ID = 8453; // Base mainnet
 const TOKENS = [
   {
     symbol: "USDC",
-    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     decimals: 6,
   },
   {
     symbol: "USDT",
-    address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", // USDT on Base
+    address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
     decimals: 6,
   },
   {
     symbol: "DAI",
-    address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", // DAI on Base
+    address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
     decimals: 18,
   },
 ];
@@ -62,10 +57,11 @@ const TOKENS = [
 const SpendSection = () => {
   const [userAddress, setUserAddress] = useState<string>("");
   const [spenderAddress, setSpenderAddress] = useState<string>("");
-  const [permissions, setPermissions] = useState<SpendPermission[]>([]);
+  const [permissions, setPermissions] = useState<SpendPermissionSummary[]>([]);
   const [selectedToken, setSelectedToken] = useState(TOKENS[0].address);
   const [dailyLimit, setDailyLimit] = useState<number>(1);
   const [loading, setLoading] = useState(false);
+  const [fetchingPermissions, setFetchingPermissions] = useState(false);
   const [error, setError] = useState<string>("");
 
   const fetchServerWallet = async () => {
@@ -82,29 +78,48 @@ const SpendSection = () => {
     }
   };
 
-  const loadStoredPermissions = () => {
-    try {
-      const storedPermissions = localStorage.getItem("spendPermissions");
-      if (storedPermissions) {
-        setPermissions(JSON.parse(storedPermissions));
-      }
-    } catch (err) {
-      console.error("Failed to load stored permissions", err);
-    }
-  };
+  // Fetch permissions using the utility function
+  const fetchPermissions = async () => {
+    if (!userAddress || !spenderAddress) return;
 
-  const savePermissionsToStorage = (perms: SpendPermission[]) => {
+    setFetchingPermissions(true);
     try {
-      localStorage.setItem("spendPermissions", JSON.stringify(perms));
+      const fetchedPermissions = await getUserSpendPermissions(
+        userAddress,
+        spenderAddress
+      );
+      setPermissions(fetchedPermissions);
     } catch (err) {
-      console.error("Failed to save permissions to storage", err);
+      console.error("Failed to fetch permissions", err);
+      setError("Failed to fetch permissions");
+    } finally {
+      setFetchingPermissions(false);
     }
   };
 
   useEffect(() => {
     fetchServerWallet();
-    loadStoredPermissions();
   }, []);
+
+  useEffect(() => {
+    if (userAddress && spenderAddress) {
+      fetchPermissions();
+    }
+  }, [userAddress, spenderAddress]);
+
+  // Format allowance for display
+  const formatAllowance = (allowance: string, tokenAddress: string): string => {
+    try {
+      const token = TOKENS.find(
+        (t) => t.address.toLowerCase() === tokenAddress.toLowerCase()
+      );
+      const decimals = token?.decimals || 6;
+      const amount = Number(allowance) / Math.pow(10, decimals);
+      return `${amount.toFixed(2)} ${token?.symbol || "tokens"}`;
+    } catch {
+      return allowance;
+    }
+  };
 
   const handleAllocate = async () => {
     if (!userAddress || !spenderAddress) {
@@ -141,37 +156,14 @@ const SpendSection = () => {
         allowance: allowanceAmount,
         periodInDays: 1,
         provider: createBaseAccountSDK({
-          appName: "Zora Creator Coins Agent",
+          appName: "Coinbase Agent",
         }).getProvider(),
       });
 
       console.log("Spend permission granted:", permission);
 
-      const newPermission: SpendPermission = {
-        token: token.address,
-        tokenName: token.symbol,
-        allowance: `${dailyLimit} ${token.symbol}`,
-        account: userAddress,
-        spender: spenderAddress,
-        periodInDays: 1,
-      };
-
-      const updatedPermissions = [
-        ...permissions.filter((p) => p.token !== token.address),
-        newPermission,
-      ];
-
-      setPermissions(updatedPermissions);
-      savePermissionsToStorage(updatedPermissions);
-
-      const storedPermissions = JSON.parse(
-        localStorage.getItem("rawSpendPermissions") || "{}"
-      );
-      storedPermissions[token.address] = permission;
-      localStorage.setItem(
-        "rawSpendPermissions",
-        JSON.stringify(storedPermissions)
-      );
+      // Refresh permissions from blockchain after successful allocation
+      await fetchPermissions();
     } catch (error) {
       console.error("Permission allocation error:", error);
       setError(
@@ -182,16 +174,24 @@ const SpendSection = () => {
     }
   };
 
-  const clearPermissions = () => {
-    setPermissions([]);
-    localStorage.removeItem("spendPermissions");
-    localStorage.removeItem("rawSpendPermissions");
+  const refreshPermissions = async () => {
+    await fetchPermissions();
   };
 
   return (
     <Card className="w-full max-w-3xl mx-auto mt-6">
       <CardHeader>
-        <CardTitle>Spend Permissions</CardTitle>
+        <CardTitle className="flex items-center justify-between">
+          <span>Spend Permissions</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refreshPermissions}
+            disabled={fetchingPermissions || !userAddress || !spenderAddress}
+          >
+            {fetchingPermissions ? "Refreshing..." : "Refresh"}
+          </Button>
+        </CardTitle>
         <p className="text-sm text-gray-600">
           Grant spend permissions to allow the agent to purchase tokens on your
           behalf
@@ -201,6 +201,12 @@ const SpendSection = () => {
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
             {error}
+            <button
+              onClick={() => setError("")}
+              className="ml-2 text-red-500 hover:text-red-700"
+            >
+              ×
+            </button>
           </div>
         )}
 
@@ -237,11 +243,6 @@ const SpendSection = () => {
             >
               {loading ? "Allocating..." : "Grant Permission"}
             </Button>
-            {permissions.length > 0 && (
-              <Button variant="outline" onClick={clearPermissions}>
-                Clear All
-              </Button>
-            )}
           </div>
         </div>
 
@@ -265,26 +266,41 @@ const SpendSection = () => {
                 <TableRow>
                   <TableHead>Token</TableHead>
                   <TableHead>Daily Allowance</TableHead>
+                  <TableHead>Account</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {permissions.length === 0 ? (
+                {fetchingPermissions ? (
                   <TableRow>
                     <TableCell
-                      colSpan={3}
+                      colSpan={4}
+                      className="text-center text-gray-500"
+                    >
+                      Loading permissions...
+                    </TableCell>
+                  </TableRow>
+                ) : permissions.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
                       className="text-center text-gray-500"
                     >
                       No spend permissions granted yet
                     </TableCell>
                   </TableRow>
                 ) : (
-                  permissions.map((p) => (
-                    <TableRow key={p.token}>
+                  permissions.map((p, index) => (
+                    <TableRow key={`${p.token}-${index}`}>
                       <TableCell className="font-medium">
                         {p.tokenName}
                       </TableCell>
-                      <TableCell>{p.allowance}</TableCell>
+                      <TableCell>
+                        {formatAllowance(p.allowance, p.token)}
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-500">
+                        {p.account.slice(0, 6)}...{p.account.slice(-4)}
+                      </TableCell>
                       <TableCell>
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                           Active
@@ -300,8 +316,9 @@ const SpendSection = () => {
 
         <div className="mt-4 text-xs text-gray-500">
           <p>
-            💡 Spend permissions are stored locally and allow the agent to spend
-            the specified amount per day. Gas fees are sponsored automatically.
+            💡 Spend permissions are fetched directly from the blockchain and
+            allow the agent to spend the specified amount per day. Gas fees are
+            sponsored automatically.
           </p>
         </div>
       </CardContent>

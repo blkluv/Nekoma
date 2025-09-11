@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { SignInWithBaseButton } from "@/components/SignInWithBase";
 import SpendSection from "@/components/SpendSection";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userAddress, setUserAddress] = useState<string>();
@@ -32,6 +34,17 @@ export default function Home() {
     setIsAuthenticated(true);
     setUserAddress(address);
   };
+  const handleSignOut = async () => {
+    console.log("Signing out user");
+    try {
+      await axios.get("/api/auth/signout");
+      setIsAuthenticated(false);
+      setUserAddress(undefined);
+      toast.success("Signed out successfully");
+    } catch (err) {
+      console.error("Error signing out:", err);
+    }
+  };
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -50,9 +63,7 @@ export default function Home() {
               </h1>
             </div>
             {isAuthenticated && (
-              <div className="text-sm text-gray-600">
-                Signed in as: {userAddress}
-              </div>
+              <Button onClick={handleSignOut}>Sign-Out</Button>
             )}
           </div>
         </div>
@@ -78,7 +89,9 @@ export default function Home() {
               You are signed in
             </h2>
             <p className="text-gray-600">Address: {userAddress}</p>
-            <SpendSection />
+            <div>
+              <SpendSection />
+            </div>
           </div>
         )}
       </div>
