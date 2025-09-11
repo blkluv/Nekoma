@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useEffect, useState } from "react";
 import axios from "axios";
@@ -5,6 +6,14 @@ import { SignInWithBaseButton } from "@/components/SignInWithBase";
 import SpendSection from "@/components/SpendSection";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getRawPermissions } from "@/utils/spendUtils";
+import { getPermissionStatus } from "@base-org/account/spend-permission/browser";
+
+import { prepareSpendCallData } from "@base-org/account/spend-permission/browser";
+interface ServerWalletResponse {
+  address: string;
+  smartAccountAddress?: string;
+}
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userAddress, setUserAddress] = useState<string>();
@@ -34,6 +43,67 @@ export default function Home() {
     setIsAuthenticated(true);
     setUserAddress(address);
   };
+  const sendTransaction = async () => {
+    try {
+      const smartWallet = await fetch("/api/serverwallet");
+      const data: ServerWalletResponse = await smartWallet.json();
+
+      const rawPermissions = await getRawPermissions(
+        userAddress!,
+        data.smartAccountAddress!
+      );
+
+      const requiredAmount = BigInt(100_000);
+      let remainingAmount = requiredAmount;
+      const spendCalls: any[] = [];
+
+      for (const perm of rawPermissions) {
+        if (remainingAmount <= 0) break;
+
+        const status = await getPermissionStatus(perm);
+
+        if (status.remainingSpend <= BigInt(0)) continue;
+
+        const spendAmount =
+          remainingAmount > status.remainingSpend
+            ? status.remainingSpend
+            : remainingAmount;
+
+        const call = await prepareSpendCallData(perm, spendAmount);
+        spendCalls.push(call);
+
+        remainingAmount -= spendAmount;
+      }
+
+      if (remainingAmount > BigInt(0)) {
+        throw new Error(
+          `Not enough permission to cover the required amount. Still need ${Number(
+            remainingAmount
+          )} units`
+        );
+      }
+
+      console.log("Spend calls to send:", spendCalls);
+
+      const res = await axios.post("/api/transfer", {
+        recipient: "0xF77A1B7294c761ea5DbD77D3AC3050c9AC802Cc3",
+        sender: userAddress,
+        amount: requiredAmount.toString(),
+        spendCalls,
+      });
+
+      if (res.data.success) {
+        toast.success("Transaction sent successfully");
+        console.log("Transaction response:", res.data);
+      } else {
+        toast.error("Transaction failed: " + res.data.error);
+      }
+    } catch (err) {
+      console.error("Error sending transaction:", err);
+      toast.error("Error sending transaction");
+    }
+  };
+
   const handleSignOut = async () => {
     console.log("Signing out user");
     try {
@@ -91,6 +161,9 @@ export default function Home() {
             <p className="text-gray-600">Address: {userAddress}</p>
             <div>
               <SpendSection />
+            </div>
+            <div>
+              <Button onClick={sendTransaction}>Send Transaction</Button>
             </div>
           </div>
         )}

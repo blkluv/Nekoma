@@ -17,13 +17,6 @@ import {
   TableCell,
 } from "./ui/table";
 import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectValue,
-  SelectItem,
-} from "./ui/select";
-import {
   getUserSpendPermissions,
   SpendPermissionSummary,
 } from "@/utils/spendUtils";
@@ -35,30 +28,17 @@ interface ServerWalletResponse {
 
 const CHAIN_ID = 8453; // Base mainnet
 
-// Predefined stable tokens with Base addresses
-const TOKENS = [
-  {
-    symbol: "USDC",
-    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    decimals: 6,
-  },
-  {
-    symbol: "USDT",
-    address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
-    decimals: 6,
-  },
-  {
-    symbol: "DAI",
-    address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-    decimals: 18,
-  },
-];
+// USDC token config only
+const USDC = {
+  symbol: "USDC",
+  address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  decimals: 6,
+};
 
 const SpendSection = () => {
   const [userAddress, setUserAddress] = useState<string>("");
   const [spenderAddress, setSpenderAddress] = useState<string>("");
   const [permissions, setPermissions] = useState<SpendPermissionSummary[]>([]);
-  const [selectedToken, setSelectedToken] = useState(TOKENS[0].address);
   const [dailyLimit, setDailyLimit] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [fetchingPermissions, setFetchingPermissions] = useState(false);
@@ -78,7 +58,6 @@ const SpendSection = () => {
     }
   };
 
-  // Fetch permissions using the utility function
   const fetchPermissions = async () => {
     if (!userAddress || !spenderAddress) return;
 
@@ -107,15 +86,10 @@ const SpendSection = () => {
     }
   }, [userAddress, spenderAddress]);
 
-  // Format allowance for display
-  const formatAllowance = (allowance: string, tokenAddress: string): string => {
+  const formatAllowance = (allowance: string): string => {
     try {
-      const token = TOKENS.find(
-        (t) => t.address.toLowerCase() === tokenAddress.toLowerCase()
-      );
-      const decimals = token?.decimals || 6;
-      const amount = Number(allowance) / Math.pow(10, decimals);
-      return `${amount.toFixed(2)} ${token?.symbol || "tokens"}`;
+      const amount = Number(allowance) / Math.pow(10, USDC.decimals);
+      return `${amount.toFixed(2)} ${USDC.symbol}`;
     } catch {
       return allowance;
     }
@@ -131,19 +105,14 @@ const SpendSection = () => {
     setError("");
 
     try {
-      const token = TOKENS.find((t) => t.address === selectedToken);
-      if (!token) {
-        throw new Error("Token not found");
-      }
-
       const allowanceAmount = BigInt(
-        Math.floor(dailyLimit * Math.pow(10, token.decimals))
+        Math.floor(dailyLimit * Math.pow(10, USDC.decimals))
       );
 
       console.log("Requesting spend permission...", {
         account: userAddress,
         spender: spenderAddress,
-        token: token.address,
+        token: USDC.address,
         allowance: allowanceAmount.toString(),
         dailyLimit,
       });
@@ -151,7 +120,7 @@ const SpendSection = () => {
       const permission = await requestSpendPermission({
         account: userAddress as `0x${string}`,
         spender: spenderAddress as `0x${string}`,
-        token: token.address as `0x${string}`,
+        token: USDC.address as `0x${string}`,
         chainId: CHAIN_ID,
         allowance: allowanceAmount,
         periodInDays: 1,
@@ -162,7 +131,6 @@ const SpendSection = () => {
 
       console.log("Spend permission granted:", permission);
 
-      // Refresh permissions from blockchain after successful allocation
       await fetchPermissions();
     } catch (error) {
       console.error("Permission allocation error:", error);
@@ -182,7 +150,7 @@ const SpendSection = () => {
     <Card className="w-full max-w-3xl mx-auto mt-6">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Spend Permissions</span>
+          <span>Spend Permissions (USDC Only)</span>
           <Button
             variant="outline"
             size="sm"
@@ -212,22 +180,7 @@ const SpendSection = () => {
 
         <div className="flex gap-4 mb-4">
           <div className="flex-1">
-            <Label>Token</Label>
-            <Select value={selectedToken} onValueChange={setSelectedToken}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select token" />
-              </SelectTrigger>
-              <SelectContent>
-                {TOKENS.map((t) => (
-                  <SelectItem key={t.address} value={t.address}>
-                    {t.symbol}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1">
-            <Label>Daily Limit</Label>
+            <Label>Daily Limit (USDC)</Label>
             <Input
               type="number"
               min={0}
@@ -292,12 +245,8 @@ const SpendSection = () => {
                 ) : (
                   permissions.map((p, index) => (
                     <TableRow key={`${p.token}-${index}`}>
-                      <TableCell className="font-medium">
-                        {p.tokenName}
-                      </TableCell>
-                      <TableCell>
-                        {formatAllowance(p.allowance, p.token)}
-                      </TableCell>
+                      <TableCell className="font-medium">USDC</TableCell>
+                      <TableCell>{formatAllowance(p.allowance)}</TableCell>
                       <TableCell className="text-xs text-gray-500">
                         {p.account.slice(0, 6)}...{p.account.slice(-4)}
                       </TableCell>
